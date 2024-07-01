@@ -107,9 +107,7 @@ python reformat_contacts.py \
 ## Run demo on images
 The following command will run DECO on all images in the specified `--img_src`, and save rendering and colored mesh in `--out_dir`. The `--model_path` flag is used to specify the specific checkpoint being used. Additionally, the base mesh color and the color of predicted contact annotation can be specified using the `--mesh_colour` and `--annot_colour` flags respectively. 
 ```bash
-python inference.py \
-    --img_src example_images \
-    --out_dir demo_out
+CUDA_VISIBLE_DEVICES=6 python inference.py --img_src example_images --out_dir demo_out
 ```
 
 ## Training and Evaluation
