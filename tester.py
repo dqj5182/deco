@@ -26,8 +26,8 @@ def test(hparams):
         print('Test Contact Precision: ', test_dict['cont_precision'])
         print('Test Contact Recall: ', test_dict['cont_recall'])
         print('Test Contact F1 Score: ', test_dict['cont_f1'])
-        print('Test Contact FP Geo. Error: ', test_dict['fp_geo_err'])
-        print('Test Contact FN Geo. Error: ', test_dict['fn_geo_err'])
+        print('Test Contact FP Geo. Error: ', test_dict['fp_geo_err'] * 100)
+        print('Test Contact FN Geo. Error: ', test_dict['fn_geo_err'] * 100)
         if hparams.TRAINING.CONTEXT:
             print('Test Contact Semantic Segmentation IoU: ', test_dict['sem_iou'])
             print('Test Contact Part Segmentation IoU: ', test_dict['part_iou'])
