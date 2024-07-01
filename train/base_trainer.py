@@ -1,3 +1,4 @@
+import os
 from tqdm import tqdm
 from utils.metrics import metric, precision_recall_f1score, det_error_metric
 import torch
@@ -24,6 +25,10 @@ def evaluator(val_loader, solver, hparams, epoch=0, dataset_name='Unknown', norm
     dataset_size = len(val_loader.dataset)
     print(f'Dataset size: {dataset_size}')
 
+    all_gt_contact_labels_3d = np.zeros((dataset_size, 6890))
+    all_pred_contact_labels_3d = np.zeros((dataset_size, 6890))
+    img_paths = np.empty((dataset_size), dtype="<U100")
+
     val_epoch_cont_pre = np.zeros(dataset_size)
     val_epoch_cont_rec = np.zeros(dataset_size)
     val_epoch_cont_f1 = np.zeros(dataset_size)
@@ -45,6 +50,7 @@ def evaluator(val_loader, solver, hparams, epoch=0, dataset_name='Unknown', norm
     iterator = tqdm(enumerate(val_loader), total=length, leave=False, desc=f'Evaluating {dataset_name.capitalize()} Epoch: {epoch}/{total_epochs}')
     for step, batch in iterator:
         curr_batch_size = batch['img'].shape[0]
+        img_path = np.array(batch['img_path'], dtype="<U100")
         losses, output, time_taken = solver.evaluate(batch)
 
         val_epoch_cont_loss[step * batch_size:step * batch_size + curr_batch_size] = losses['cont_loss'].cpu().numpy()
@@ -85,6 +91,14 @@ def evaluator(val_loader, solver, hparams, epoch=0, dataset_name='Unknown', norm
                 rend = gen_render(output, normalize)
                 rend_images.append(rend)
 
+
+        # Store 3D contact pred & GT
+        img_paths[step * batch_size:step * batch_size + curr_batch_size] = img_path
+        all_gt_contact_labels_3d[step * batch_size:step * batch_size + curr_batch_size] = contact_labels_3d.detach().cpu().numpy()
+        all_pred_contact_labels_3d[step * batch_size:step * batch_size + curr_batch_size] = contact_labels_3d_pred.detach().cpu().numpy()
+
+
+    # Calculate final scores
     eval_dict['cont_precision'] = np.sum(val_epoch_cont_pre) / dataset_size
     eval_dict['cont_recall'] = np.sum(val_epoch_cont_rec) / dataset_size
     eval_dict['cont_f1'] = np.sum(val_epoch_cont_f1) / dataset_size
@@ -96,8 +110,19 @@ def evaluator(val_loader, solver, hparams, epoch=0, dataset_name='Unknown', norm
         eval_dict['images'] = rend_images
     
     total_time /= dataset_size
-
     val_epoch_cont_loss = np.sum(val_epoch_cont_loss) / dataset_size
+
+
+    # Save 3D contact pred & GT
+    all_contact_outputs_3d_path = os.path.join('test_outputs', 'DECO', dataset_name, f'deco_{dataset_name}_outputs')
+
+    if not os.path.exists(os.path.join('test_outputs', 'DECO', dataset_name)):
+        os.makedirs(os.path.join('test_outputs', 'DECO', dataset_name))
+
+    print(f'Saving outputs in {all_contact_outputs_3d_path}....')
+    np.savez(all_contact_outputs_3d_path, img_path=img_paths, contact_labels_3d_gt=all_gt_contact_labels_3d, contact_labels_3d_pred=all_pred_contact_labels_3d)
+
+
     if return_dict:
         return eval_dict, total_time
     return eval_dict['cont_f1']
