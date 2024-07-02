@@ -45,6 +45,10 @@ if __name__ == '__main__':
     
 
     # Load mapping between smpl and smplx vertices
+    num_smplx_verts = 10475
+    num_smpl_verts = 6890
+    num_mano_verts = 778
+
     if args.input_type == 'smpl':
         mapping_pkl = os.path.join(constants.CONTACT_MAPPING_PATH, "smpl_to_smplx.pkl")
     elif args.input_type == 'smplx':
@@ -57,18 +61,35 @@ if __name__ == '__main__':
         mapping = mapping["matrix"]
 
 
+    # SMPLX-to-MANO mapping
+    smplx_mano_mapping_pkl = os.path.join(constants.CONTACT_MAPPING_PATH, "smplx_to_mano.pkl") # from MANO_SMPLX_vertex_ids.pkl by SMPLX
+    with open(smplx_mano_mapping_pkl, 'rb') as f:
+        mano_mapping = pkl.load(f)
+        mano_mapping = mano_mapping["right_hand"]
+
+    mano_mat_mapping = np.zeros((num_smplx_verts, num_mano_verts), dtype=int)
+    mano_mat_mapping[mano_mapping, np.arange(num_mano_verts)] = 1
+
+
+
     # Get contact labels
     contact_data = np.load(args.contact_npz, allow_pickle=True)
     contact_data = dict(contact_data)
     
+
     # contact_data = convert_contacts(contact_data, mapping, 'contact_label', 'contact_label_smplx') # -> Original for converting file "hot_dca_trainval.npz"
     if args.input_type == 'smpl':
         contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_gt', 'contact_labels_3d_smplx_gt')
         contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_pred', 'contact_labels_3d_smplx_pred')
+
+        # Save hand contact in MANO
+        contact_data['contact_labels_3d_mano_gt'] = contact_data['contact_labels_3d_smplx_gt'][:, mano_mapping]
+        contact_data['contact_labels_3d_mano_pred'] = contact_data['contact_labels_3d_smplx_pred'][:, mano_mapping]
     else:
         import pdb; pdb.set_trace()
 
-    # save the converted contact labels
+
+    # Save the converted contact labels
     parent_dir, child_dir = os.path.split(args.contact_npz)
     child_name, child_ext = os.path.splitext(child_dir)
 
@@ -81,6 +102,3 @@ if __name__ == '__main__':
     
 
     np.savez(save_contact_path, **contact_data)
-
-
-
