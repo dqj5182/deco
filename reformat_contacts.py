@@ -41,6 +41,10 @@ if __name__ == '__main__':
                         default='../datasets/ReleaseDatasets/damon/hot_dca_train.npz')
     parser.add_argument('--input_type', type=str, required=True, help='input type: smpl or smplx',
                         default='smpl')
+    parser.add_argument('--pred_output', action="store_true")
+    parser.add_argument('--only_get_mano', action="store_true")
+    parser.add_argument('--only_mano_two_hands', action="store_true")
+    parser.add_argument('--flip_left_to_right', action="store_true")
     args = parser.parse_args()
     
 
@@ -65,11 +69,8 @@ if __name__ == '__main__':
     smplx_mano_mapping_pkl = os.path.join(constants.CONTACT_MAPPING_PATH, "smplx_to_mano.pkl") # from MANO_SMPLX_vertex_ids.pkl by SMPLX
     with open(smplx_mano_mapping_pkl, 'rb') as f:
         mano_mapping = pkl.load(f)
-        mano_mapping = mano_mapping["right_hand"]
-
-    mano_mat_mapping = np.zeros((num_smplx_verts, num_mano_verts), dtype=int)
-    mano_mat_mapping[mano_mapping, np.arange(num_mano_verts)] = 1
-
+        mano_mapping_r = mano_mapping["right_hand"]
+        mano_mapping_l = mano_mapping["left_hand"]
 
 
     # Get contact labels
@@ -79,14 +80,77 @@ if __name__ == '__main__':
 
     # contact_data = convert_contacts(contact_data, mapping, 'contact_label', 'contact_label_smplx') # -> Original for converting file "hot_dca_trainval.npz"
     if args.input_type == 'smpl':
-        contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_gt', 'contact_labels_3d_smplx_gt')
-        contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_pred', 'contact_labels_3d_smplx_pred')
+        if 'contact_label_smplx' not in [*contact_data]:
+            contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_gt', 'contact_labels_3d_smplx_gt')
+        if args.pred_output:
+            contact_data = convert_contacts(contact_data, mapping, 'contact_labels_3d_pred', 'contact_labels_3d_smplx_pred')
 
         # Save hand contact in MANO
-        contact_data['contact_labels_3d_mano_gt'] = contact_data['contact_labels_3d_smplx_gt'][:, mano_mapping]
-        contact_data['contact_labels_3d_mano_pred'] = contact_data['contact_labels_3d_smplx_pred'][:, mano_mapping]
+        # Right hand
+        if 'contact_label_smplx' not in [*contact_data]:
+            contact_data['contact_labels_3d_mano_r_gt'] = contact_data['contact_labels_3d_smplx_gt'][:, mano_mapping_r]
+        else:
+            contact_data['contact_labels_3d_mano_r_gt'] = contact_data['contact_label_smplx'][:, mano_mapping_r]
+        if args.pred_output:
+            contact_data['contact_labels_3d_mano_r_pred'] = contact_data['contact_labels_3d_smplx_pred'][:, mano_mapping_r]
+
+        # Left hand
+        if 'contact_label_smplx' not in [*contact_data]:
+            contact_data['contact_labels_3d_mano_l_gt'] = contact_data['contact_labels_3d_smplx_gt'][:, mano_mapping_l]
+        else:
+            contact_data['contact_labels_3d_mano_l_gt'] = contact_data['contact_label_smplx'][:, mano_mapping_l]
+        if args.pred_output:
+            contact_data['contact_labels_3d_mano_l_pred'] = contact_data['contact_labels_3d_smplx_pred'][:, mano_mapping_l]
+
+        # All hand
+        contact_data['contact_labels_3d_mano_gt'] = np.concatenate((contact_data['contact_labels_3d_mano_r_gt'], contact_data['contact_labels_3d_mano_l_gt']), axis=-1)
+        if args.pred_output:
+            contact_data['contact_labels_3d_mano_pred'] = np.concatenate((contact_data['contact_labels_3d_mano_r_pred'], contact_data['contact_labels_3d_mano_l_pred']), axis=-1)
+
+
+        # If you want to only save mano as main contact labels
+        if args.only_get_mano:
+            if args.only_mano_two_hands:
+                contact_data['contact_label'] = contact_data['contact_labels_3d_mano_gt']
+            else:
+                contact_data['contact_label'] = contact_data['contact_labels_3d_mano_r_gt']
     else:
         import pdb; pdb.set_trace()
+
+
+    # Flip left hand data as right hand data
+    new_contact_data = {'is_right': []}
+
+    if args.flip_left_to_right:
+        for hand_type in range(2):
+            # for each_idx in range(len(contact_data['imgname'])):
+            for each_key in [*contact_data]:
+                # First time of the key
+                if each_key not in [*new_contact_data]:
+                    new_contact_data[each_key] = []
+                
+                if hand_type == 0: # left hand
+                    if each_key in ['contact_label']:
+                        new_contact_data['contact_label'].extend(contact_data['contact_labels_3d_mano_l_gt'])
+                        new_contact_data['is_right'].extend([0] * len(contact_data['imgname']))
+                    else:
+                        new_contact_data[each_key].extend(contact_data[each_key].tolist())
+                elif hand_type == 1: # right hand
+                    if each_key in ['contact_label']:
+                        new_contact_data['contact_label'].extend(contact_data['contact_labels_3d_mano_r_gt'])
+                        new_contact_data['is_right'].extend([1] * len(contact_data['imgname']))
+                    else:
+                        new_contact_data[each_key].extend(contact_data[each_key].tolist())
+                else:
+                    import pdb; pdb.set_trace()
+
+                
+
+        for each_key in [*new_contact_data]:
+            new_contact_data[each_key] = np.array(new_contact_data[each_key])
+        
+
+        contact_data = new_contact_data
 
 
     # Save the converted contact labels
@@ -94,7 +158,10 @@ if __name__ == '__main__':
     child_name, child_ext = os.path.splitext(child_dir)
 
     if args.input_type == 'smpl':
-        save_contact_path = os.path.join(parent_dir, f'{child_name}_smplx{child_ext}')
+        if args.only_get_mano:
+            save_contact_path = os.path.join(parent_dir, f'{child_name}_mano_r{child_ext}')
+        else:
+            save_contact_path = os.path.join(parent_dir, f'{child_name}_smplx{child_ext}')
     elif args.input_type == 'smplx':
         save_contact_path = os.path.join(parent_dir, f'{child_name}_smpl{child_ext}')
     else:
